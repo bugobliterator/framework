@@ -44,5 +44,5 @@ static void node_status_publisher_task_func(struct worker_thread_timer_task_s* t
     (void)task;
 
     node_status.uptime_sec++;
-    uavcan_broadcast(0, &uavcan_protocol_NodeStatus_descriptor, CANARD_TRANSFER_PRIORITY_LOW, &node_status);
+    uavcan_broadcast_all(&uavcan_protocol_NodeStatus_descriptor, CANARD_TRANSFER_PRIORITY_LOW, &node_status);
 }
