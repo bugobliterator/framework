@@ -17,12 +17,14 @@ WORKER_THREAD_DECLARE_EXTERN(WT)
 #endif
 
 static struct worker_thread_timer_task_s delayed_restart_task;
-static struct worker_thread_listener_task_s beginfirmwareupdate_req_listener_task;
+static struct worker_thread_listener_task_s beginfirmwareupdate_req_listener_task[2];
 static void beginfirmwareupdate_req_handler(size_t msg_size, const void* buf, void* ctx);
 
 RUN_AFTER(UAVCAN_INIT) {
-    struct pubsub_topic_s* beginfirmwareupdate_req_topic = uavcan_get_message_topic(0, &uavcan_protocol_file_BeginFirmwareUpdate_req_descriptor);
-    worker_thread_add_listener_task(&WT, &beginfirmwareupdate_req_listener_task, beginfirmwareupdate_req_topic, beginfirmwareupdate_req_handler, NULL);
+    for (uint8_t i = 0; i < MIN(uavcan_get_num_instances(), 2); i++) {
+        struct pubsub_topic_s* beginfirmwareupdate_req_topic = uavcan_get_message_topic(i, &uavcan_protocol_file_BeginFirmwareUpdate_req_descriptor);
+        worker_thread_add_listener_task(&WT, &beginfirmwareupdate_req_listener_task[i], beginfirmwareupdate_req_topic, beginfirmwareupdate_req_handler, NULL);
+    }
 }
 
 static void delayed_restart_func(struct worker_thread_timer_task_s* task) {
