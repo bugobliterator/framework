@@ -20,12 +20,14 @@ WORKER_THREAD_DECLARE_EXTERN(WT)
 
 #include <uavcan.protocol.GetNodeInfo.h>
 
-static struct worker_thread_listener_task_s getnodeinfo_req_listener_task;
+static struct worker_thread_listener_task_s getnodeinfo_req_listener_task[2];
 static void getnodeinfo_req_handler(size_t msg_size, const void* buf, void* ctx);
 
 RUN_AFTER(UAVCAN_INIT) {
-    struct pubsub_topic_s* getnodeinfo_req_topic = uavcan_get_message_topic(0, &uavcan_protocol_GetNodeInfo_req_descriptor);
-    worker_thread_add_listener_task(&WT, &getnodeinfo_req_listener_task, getnodeinfo_req_topic, getnodeinfo_req_handler, NULL);
+    for (uint8_t i = 0; i < MIN(uavcan_get_num_instances(), 2); i++) {
+        struct pubsub_topic_s* getnodeinfo_req_topic = uavcan_get_message_topic(i, &uavcan_protocol_GetNodeInfo_req_descriptor);
+        worker_thread_add_listener_task(&WT, &getnodeinfo_req_listener_task[i], getnodeinfo_req_topic, getnodeinfo_req_handler, NULL);
+    }
 }
 
 static void getnodeinfo_req_handler(size_t msg_size, const void* buf, void* ctx) {
