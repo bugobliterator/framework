@@ -36,34 +36,40 @@ struct can_driver_stm32_instance_s {
     CAN_TypeDef* can;
 };
 
-static struct can_driver_stm32_instance_s can1_instance;
+static struct can_driver_stm32_instance_s can_instance[2];
 
 RUN_ON(CAN_INIT) {
     // TODO make this index configurable and enable multiple instances
-    can1_instance.can = CAN1;
-    can1_instance.frontend = can_driver_register(0, &can1_instance, &can_driver_stm32_iface, NUM_TX_MAILBOXES, NUM_RX_MAILBOXES, RX_FIFO_DEPTH);
+    can_instance[0].can = CAN1;
+    can_instance[1].can = CAN2;
+    can_instance[0].frontend = can_driver_register(0, &can_instance[0], &can_driver_stm32_iface, NUM_TX_MAILBOXES, NUM_RX_MAILBOXES, RX_FIFO_DEPTH);
+    can_instance[1].frontend = can_driver_register(1, &can_instance[1], &can_driver_stm32_iface, NUM_TX_MAILBOXES, NUM_RX_MAILBOXES, RX_FIFO_DEPTH);
 }
 
 static void can_driver_stm32_start(void* ctx, bool silent, bool auto_retransmit, uint32_t baudrate) {
     struct can_driver_stm32_instance_s* instance = ctx;
 
-    rccEnableCAN1(FALSE);
+    if (instance == &can_instance[1]) {
+        rccEnableCAN2(FALSE);
+    } else if (instance == &can_instance[0]) {
+        rccEnableCAN1(FALSE);
+    }
 
-    instance->can->FMR = (instance->can->FMR & 0xFFFF0000) | CAN_FMR_FINIT;
-    instance->can->sFilterRegister[0].FR1 = 0;
-    instance->can->sFilterRegister[0].FR2 = 0;
-    instance->can->FM1R = 0;
-    instance->can->FFA1R = 0;
-    instance->can->FS1R = 1;
-    instance->can->FA1R = 1;
+    instance->can->MCR &= ~CAN_MCR_SLEEP; // Exit sleep mode
+    instance->can->MCR |= CAN_MCR_INRQ;   // Request init
 
-    instance->can->FMR &= ~CAN_FMR_FINIT;
+    instance->can->IER = 0;                  // Disable interrupts while initialization is in progress
 
-    nvicEnableVector(STM32_CAN1_TX_NUMBER, STM32_CAN_CAN1_IRQ_PRIORITY);
-    nvicEnableVector(STM32_CAN1_RX0_NUMBER, STM32_CAN_CAN1_IRQ_PRIORITY);
-    nvicEnableVector(STM32_CAN1_SCE_NUMBER, STM32_CAN_CAN1_IRQ_PRIORITY);
+    if (instance == &can_instance[1]) {
+        nvicEnableVector(STM32_CAN2_TX_NUMBER, STM32_CAN_CAN2_IRQ_PRIORITY);
+        nvicEnableVector(STM32_CAN2_RX0_NUMBER, STM32_CAN_CAN2_IRQ_PRIORITY);
+        nvicEnableVector(STM32_CAN2_SCE_NUMBER, STM32_CAN_CAN2_IRQ_PRIORITY);
+    } else {
+        nvicEnableVector(STM32_CAN1_TX_NUMBER, STM32_CAN_CAN1_IRQ_PRIORITY);
+        nvicEnableVector(STM32_CAN1_RX0_NUMBER, STM32_CAN_CAN1_IRQ_PRIORITY);
+        nvicEnableVector(STM32_CAN1_SCE_NUMBER, STM32_CAN_CAN1_IRQ_PRIORITY);
+    }
 
-    instance->can->MCR = CAN_MCR_INRQ;
     while((instance->can->MSR & CAN_MSR_INAK) == 0) {
         __asm__("nop");
     }
@@ -119,6 +125,21 @@ static void can_driver_stm32_start(void* ctx, bool silent, bool auto_retransmit,
     instance->can->MCR = CAN_MCR_ABOM | CAN_MCR_AWUM | (auto_retransmit?0:CAN_MCR_NART);
 
     instance->can->IER = CAN_IER_TMEIE | CAN_IER_FMPIE0; // TODO: review reference manual for other interrupt flags needed
+
+    if (instance == &can_instance[0]) { 
+        uint32_t fmr = can_instance[0].can->FMR & 0xFFFFC0F1;
+        fmr |= 14UL << 8;
+        can_instance[0].can->FMR = fmr | CAN_FMR_FINIT;
+        can_instance[0].can->sFilterRegister[0].FR1 = 0;
+        can_instance[0].can->sFilterRegister[0].FR2 = 0;
+        can_instance[0].can->sFilterRegister[14].FR1 = 0;
+        can_instance[0].can->sFilterRegister[14].FR2 = 0;
+        can_instance[0].can->FM1R = 0;
+        can_instance[0].can->FFA1R = 0;
+        can_instance[0].can->FS1R = 0x7ffffffUL;
+        can_instance[0].can->FA1R = 1UL | (1UL << 14);
+        can_instance[0].can->FMR &= ~CAN_FMR_FINIT;
+    }
 }
 
 static void can_driver_stm32_stop(void* ctx) {
@@ -126,12 +147,17 @@ static void can_driver_stm32_stop(void* ctx) {
 
     instance->can->MCR = 0x00010002;
     instance->can->IER = 0x00000000;
-
-    nvicDisableVector(STM32_CAN1_TX_NUMBER);
-    nvicDisableVector(STM32_CAN1_RX0_NUMBER);
-    nvicDisableVector(STM32_CAN1_SCE_NUMBER);
-
-    rccDisableCAN1(FALSE);
+    if (instance == &can_instance[1]) {
+        nvicDisableVector(STM32_CAN2_TX_NUMBER);
+        nvicDisableVector(STM32_CAN2_RX0_NUMBER);
+        nvicDisableVector(STM32_CAN2_SCE_NUMBER);
+        rccDisableCAN2(FALSE);
+    } else {
+        nvicDisableVector(STM32_CAN1_TX_NUMBER);
+        nvicDisableVector(STM32_CAN1_RX0_NUMBER);
+        nvicDisableVector(STM32_CAN1_SCE_NUMBER);
+        rccDisableCAN1(FALSE);
+    }
 }
 
 bool can_driver_stm32_abort_tx_mailbox_I(void* ctx, uint8_t mb_idx) {
@@ -239,7 +265,7 @@ static void stm32_can_tx_handler(struct can_driver_stm32_instance_s* instance) {
 OSAL_IRQ_HANDLER(STM32_CAN1_TX_HANDLER) {
     OSAL_IRQ_PROLOGUE();
 
-    stm32_can_tx_handler(&can1_instance);
+    stm32_can_tx_handler(&can_instance[0]);
 
     OSAL_IRQ_EPILOGUE();
 }
@@ -247,7 +273,24 @@ OSAL_IRQ_HANDLER(STM32_CAN1_TX_HANDLER) {
 OSAL_IRQ_HANDLER(STM32_CAN1_RX0_HANDLER) {
     OSAL_IRQ_PROLOGUE();
 
-    stm32_can_rx_handler(&can1_instance);
+    stm32_can_rx_handler(&can_instance[0]);
+
+    OSAL_IRQ_EPILOGUE();
+}
+
+
+OSAL_IRQ_HANDLER(STM32_CAN2_TX_HANDLER) {
+    OSAL_IRQ_PROLOGUE();
+
+    stm32_can_tx_handler(&can_instance[1]);
+
+    OSAL_IRQ_EPILOGUE();
+}
+
+OSAL_IRQ_HANDLER(STM32_CAN2_RX0_HANDLER) {
+    OSAL_IRQ_PROLOGUE();
+
+    stm32_can_rx_handler(&can_instance[1]);
 
     OSAL_IRQ_EPILOGUE();
 }
