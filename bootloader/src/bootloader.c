@@ -63,11 +63,11 @@ static struct {
     const struct shared_app_parameters_s* shared_app_parameters;
 } app_info;
 
-static struct worker_thread_listener_task_s beginfirmwareupdate_req_listener_task;
-static struct worker_thread_listener_task_s file_read_res_task;
-static struct worker_thread_listener_task_s restart_req_listener_task;
+static struct worker_thread_listener_task_s beginfirmwareupdate_req_listener_task[2];
+static struct worker_thread_listener_task_s file_read_res_task[2];
+static struct worker_thread_listener_task_s restart_req_listener_task[2];
 static struct worker_thread_timer_task_s delayed_restart_task;
-static struct worker_thread_listener_task_s getnodeinfo_req_listener_task;
+static struct worker_thread_listener_task_s getnodeinfo_req_listener_task[2];
 
 static void file_beginfirmwareupdate_request_handler(size_t msg_size, const void* buf, void* ctx);
 static void begin_flash_from_path(uint8_t uavcan_idx, uint8_t source_node_id, struct uavcan_protocol_file_Path_s path);
@@ -104,17 +104,19 @@ RUN_BEFORE(INIT_END) {
 }
 
 RUN_AFTER(UAVCAN_INIT) {
-    struct pubsub_topic_s* beginfirmwareupdate_req_topic = uavcan_get_message_topic(0, &uavcan_protocol_file_BeginFirmwareUpdate_req_descriptor);
-    worker_thread_add_listener_task(&WT, &beginfirmwareupdate_req_listener_task, beginfirmwareupdate_req_topic, file_beginfirmwareupdate_request_handler, NULL);
+    for (uint8_t i = 0; i < MIN(uavcan_get_num_instances(), 2); i++) {
+        struct pubsub_topic_s* beginfirmwareupdate_req_topic = uavcan_get_message_topic(i, &uavcan_protocol_file_BeginFirmwareUpdate_req_descriptor);
+        worker_thread_add_listener_task(&WT, &beginfirmwareupdate_req_listener_task[i], beginfirmwareupdate_req_topic, file_beginfirmwareupdate_request_handler, NULL);
 
-    struct pubsub_topic_s* file_read_topic = uavcan_get_message_topic(0, &uavcan_protocol_file_Read_res_descriptor);
-    worker_thread_add_listener_task(&WT, &file_read_res_task, file_read_topic, file_read_response_handler, NULL);
+        struct pubsub_topic_s* file_read_topic = uavcan_get_message_topic(i, &uavcan_protocol_file_Read_res_descriptor);
+        worker_thread_add_listener_task(&WT, &file_read_res_task[i], file_read_topic, file_read_response_handler, NULL);
 
-    struct pubsub_topic_s* restart_topic = uavcan_get_message_topic(0, &uavcan_protocol_RestartNode_req_descriptor);
-    worker_thread_add_listener_task(&WT, &restart_req_listener_task, restart_topic, restart_req_handler, NULL);
+        struct pubsub_topic_s* restart_topic = uavcan_get_message_topic(i, &uavcan_protocol_RestartNode_req_descriptor);
+        worker_thread_add_listener_task(&WT, &restart_req_listener_task[i], restart_topic, restart_req_handler, NULL);
 
-    struct pubsub_topic_s* getnodeinfo_req_topic = uavcan_get_message_topic(0, &uavcan_protocol_GetNodeInfo_req_descriptor);
-    worker_thread_add_listener_task(&WT, &getnodeinfo_req_listener_task, getnodeinfo_req_topic, getnodeinfo_req_handler, NULL);
+        struct pubsub_topic_s* getnodeinfo_req_topic = uavcan_get_message_topic(i, &uavcan_protocol_GetNodeInfo_req_descriptor);
+        worker_thread_add_listener_task(&WT, &getnodeinfo_req_listener_task[i], getnodeinfo_req_topic, getnodeinfo_req_handler, NULL);
+    }
 }
 
 static void getnodeinfo_req_handler(size_t msg_size, const void* buf, void* ctx) {
