@@ -99,6 +99,7 @@ PARAM_DEFINE_UINT8_PARAM_STATIC(node_id_param, "uavcan.node_id", 0, 0, 125)
 
 RUN_ON(UAVCAN_INIT) {
     uavcan_init(0);
+    uavcan_init(1);
 
     worker_thread_add_timer_task(&WT_RX, &stale_transfer_cleanup_task, stale_transfer_cleanup_task_func, NULL, LL_US2ST(CANARD_RECOMMENDED_STALE_TRANSFER_CLEANUP_INTERVAL_USEC), true);
 }
@@ -442,6 +443,12 @@ bool uavcan_broadcast(uint8_t uavcan_idx, const struct uavcan_message_descriptor
         return true;
     } else {
         return false;
+    }
+}
+
+void uavcan_broadcast_all(const struct uavcan_message_descriptor_s* const msg_descriptor, uint8_t priority, void* msg_data) {
+    for(uint8_t i = 0; i < uavcan_get_num_instances(); i++) {
+        uavcan_broadcast(i, msg_descriptor, priority, msg_data);
     }
 }
 

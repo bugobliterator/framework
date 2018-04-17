@@ -4,6 +4,7 @@
 #include <ch.h>
 #include <hal.h>
 #include <modules/pubsub/pubsub.h>
+#include <common/helpers.h>
 
 typedef void (*uavcan_serializer_chunk_cb_ptr_t)(uint8_t* chunk, size_t bitlen, void* ctx);
 typedef void (*uavcan_serializer_func_ptr_t)(void* msg_struct, uavcan_serializer_chunk_cb_ptr_t chunk_cb, void* ctx);
@@ -43,5 +44,7 @@ uint16_t uavcan_get_message_data_type_id(uint8_t uavcan_idx, const struct uavcan
 struct pubsub_topic_s* uavcan_get_message_topic(uint8_t uavcan_idx, const struct uavcan_message_descriptor_s* msg_descriptor);
 
 bool uavcan_broadcast(uint8_t uavcan_idx, const struct uavcan_message_descriptor_s* const msg_descriptor, uint8_t priority, void* msg_data);
+void uavcan_broadcast_all(const struct uavcan_message_descriptor_s* const msg_descriptor, uint8_t priority, void* msg_data);
+
 bool uavcan_request(uint8_t uavcan_idx, const struct uavcan_message_descriptor_s* const msg_descriptor, uint8_t priority, uint8_t dest_node_id, void* msg_data);
 bool uavcan_respond(uint8_t uavcan_idx, const struct uavcan_deserialized_message_s* const req_msg, void* msg_data);
